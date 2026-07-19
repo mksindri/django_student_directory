@@ -1,0 +1,10 @@
+version: "0.1"
+
+services:
+
+  backend:
+    image: django-app:latest
+    container_name: django-app
+
+    ports:
+      - "8000:8000"

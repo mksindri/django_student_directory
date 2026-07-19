@@ -1,0 +1,124 @@
+name: Django App CI/CD
+
+on:
+  push:
+    branches:
+      - main
+      - feature/*
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  # ----------------------------------------------------
+  # STAGE 1: BUILD (Build Docker images and save as artifacts)
+  # ----------------------------------------------------
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Backend Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+          tags: client-backend:latest
+          outputs: type=docker,dest=/tmp/client-backend.tar
+
+      - name: Upload Backend Image Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-backend
+          path: /tmp/client-backend.tar
+          retention-days: 1
+
+  # ----------------------------------------------------
+  # STAGE 2: TEST (Load images and run locally to test)
+  # ----------------------------------------------------
+  test:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Download Backend Image Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: client-backend
+          path: /tmp
+
+      - name: Load Docker images
+        run: |
+          docker load --input /tmp/client-backend.tar
+
+      - name: Run Backend Container
+        run: |
+          docker run -d --name backend-test -p 8000:8000 client-backend:latest
+
+      # - name: Verify Backend container health
+      #   run: |
+      #     # Wait for services to start
+      #     sleep 5
+      #     # Test backend API
+      #     curl --fail -v http://localhost:8000/
+
+      - name: Stop Containers
+        if: always()
+        run: |
+          docker stop backend-test || true
+
+  # ----------------------------------------------------
+  # STAGE 3: DEPLOY (Log in to Docker Hub and push images)
+  # ----------------------------------------------------
+  deploy:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Download Backend Image Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: client-backend
+          path: /tmp
+
+      - name: Load Docker images
+        run: |
+          docker load --input /tmp/client-backend.tar
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Tag and Push Backend Image to AWS ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+          COMMIT_SHA: ${{ github.sha }}
+          BRANCH_NAME: ${{ github.ref_name }}
+        run: |
+          SAFE_BRANCH=$(echo "$BRANCH_NAME" | sed 's/\//-/g')
+          
+          # Push commit SHA tag
+          docker tag client-backend:latest $ECR_REGISTRY/$ECR_REPOSITORY:${COMMIT_SHA:0:7}
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:${COMMIT_SHA:0:7}
+          
+          # Push branch name tag
+          docker tag client-backend:latest $ECR_REGISTRY/$ECR_REPOSITORY:$SAFE_BRANCH
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$SAFE_BRANCH
+          
+          # Push latest tag if on main branch
+          if [ "$BRANCH_NAME" = "main" ]; then
+            docker tag client-backend:latest $ECR_REGISTRY/$ECR_REPOSITORY:latest
+            docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          fi
