@@ -27,7 +27,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: Dockerfile
+          file: deployment/Dockerfile
           push: false
           tags: client-backend:latest
           outputs: type=docker,dest=/tmp/client-backend.tar
