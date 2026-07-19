@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Student Management</title>
+</head>
+<body>
+    <h1>Add Student</h1>
+    <form method="POST">
+        {% csrf_token %}
+        Name: <input type="text" name="name" placeholder="Enter student name" required></br>
+        Roll No: <input type="text" name="roll_no" placeholder="Enter Roll No" required></br>
+        Class Name: <input type="text" name="class_name" placeholder="Enter Class Name" required></br>
+        Fathers Name: <input type="text" name="fathers_name" placeholder="Enter Fathers name" required></br>
+        Mothers Name: <input type="text" name="mothers_name" placeholder="Enter Mothers name" required></br>
+        address: <input type="text" name="address" placeholder="Enter Address" required></br>
+
+    </br>
+        <button type="submit">
+            Add Student
+        </button>
+
+    form>
+    <hr>
+    <h2>Student List</h2>
+    <ul>
+
+        {% for student in students %}
+
+            <li>
+                {{ student.name }} - {{ student.roll_no }} - {{ student.class_name }}  - {{ student.fathers_name }} - {{ student.address }}
+            </li>
+
+        {% empty %}
+
+            <li>No students added.</li>
+
+        {% endfor %}
+
+    </ul>
+
+</body>
+</html>
